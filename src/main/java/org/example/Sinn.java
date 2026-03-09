@@ -1,7 +1,7 @@
 package org.example;
 
 
-public class Sin {
+public class Sinn {
 
     public static double sin(double x) {
         if (Double.isNaN(x) || Double.isInfinite(x)) {
