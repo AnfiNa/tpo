@@ -38,7 +38,7 @@ public class SinnTest {
 
     @Test
     public void testNegativeLarge() {
-        double x = -1000000.0;
+        double x = -2000000.0;
         assertEquals(Sinn.sin(x), sin(x), 1e-8);
     }
 
