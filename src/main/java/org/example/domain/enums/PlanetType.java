@@ -5,5 +5,6 @@ public enum PlanetType {
     GAS_GIANT,
     ICE,
     OCEANIC,
-    DESERT
+    DESERT,
+    TERRESTRIAL
 }
