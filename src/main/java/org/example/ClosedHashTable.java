@@ -1,7 +1,10 @@
 package org.example;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public class ClosedHashTable<T> {
 
@@ -19,149 +22,20 @@ public class ClosedHashTable<T> {
         DOUBLE_HASHING
     }
 
-    public static class TraceResult<E> {
-        private final E value;
-        private final String trace;
-
-        public TraceResult(E value, String trace) {
-            this.value = value;
-            this.trace = trace;
-        }
-
-        public E getValue() {
-            return value;
-        }
-
-        public String getTrace() {
-            return trace;
-        }
+    public enum PutStep {
+        P1, P2, P3, P4, P5, P6, P7, P8, P9
     }
 
-    public TraceResult<T> traceGet(T key) {
-        validateKey(key);
-
-        StringBuilder trace = new StringBuilder("G1");
-
-        int hash = primaryHash(key);
-        trace.append(" -> G2");
-
-        for (int step = 0; step < data.length; step++) {
-            int index = probeIndex(hash, key, step);
-            Object current = data[index];
-
-            if (current == null) {
-                trace.append(" -> G5");
-                return new TraceResult<>(null, trace.toString());
-            }
-
-            if (current != DELETED && current.equals(key)) {
-                trace.append(" -> G3");
-                @SuppressWarnings("unchecked")
-                T value = (T) current;
-                return new TraceResult<>(value, trace.toString());
-            }
-
-            trace.append(" -> G4");
-        }
-
-        trace.append(" -> G5");
-        return new TraceResult<>(null, trace.toString());
+    public enum GetStep {
+        G1, G2, G3, G4, G5
     }
 
-    public TraceResult<Boolean> traceRemove(T key) {
-        validateKey(key);
-
-        StringBuilder trace = new StringBuilder("R1");
-
-        int hash = primaryHash(key);
-
-        for (int step = 0; step < data.length; step++) {
-            int index = probeIndex(hash, key, step);
-            Object current = data[index];
-
-            if (current == null) {
-                trace.append(" -> R6");
-                return new TraceResult<>(false, trace.toString());
-            }
-
-            if (current != DELETED && current.equals(key)) {
-                trace.append(" -> R2");
-
-                if (counts[index] > 1) {
-                    counts[index]--;
-                    trace.append(" -> R3");
-                } else {
-                    data[index] = DELETED;
-                    counts[index] = 0;
-                    size--;
-                    trace.append(" -> R4");
-                }
-
-                return new TraceResult<>(true, trace.toString());
-            }
-
-            trace.append(" -> R5");
-        }
-
-        trace.append(" -> R6");
-        return new TraceResult<>(false, trace.toString());
+    public enum RemoveStep {
+        R1, R2, R3, R4, R5, R6
     }
 
-    public TraceResult<Boolean> tracePut(T key) {
-        validateKey(key);
-
-        StringBuilder trace = new StringBuilder("P1");
-
-        int firstDeleted = -1;
-        int hash = primaryHash(key);
-        trace.append(" -> P2");
-
-        for (int step = 0; step < data.length; step++) {
-            int index = probeIndex(hash, key, step);
-            Object current = data[index];
-
-            if (current == null) {
-                trace.append(" -> P3");
-                int target = firstDeleted != -1 ? firstDeleted : index;
-
-                data[target] = key;
-                counts[target] = 1;
-                size++;
-
-                trace.append(" -> P6");
-                return new TraceResult<>(true, trace.toString());
-            }
-
-            if (current == DELETED) {
-                if (firstDeleted == -1) {
-                    firstDeleted = index;
-                }
-                trace.append(" -> P4 -> P5");
-                continue;
-            }
-
-            if (current.equals(key)) {
-                trace.append(" -> P7");
-                counts[index]++;
-                trace.append(" -> P8");
-                return new TraceResult<>(true, trace.toString());
-            }
-
-            trace.append(" -> P4 -> P5");
-        }
-
-        if (firstDeleted != -1) {
-            data[firstDeleted] = key;
-            counts[firstDeleted] = 1;
-            size++;
-            trace.append(" -> P6");
-            return new TraceResult<>(true, trace.toString());
-        }
-
-        trace.append(" -> P9");
-        throw new UnsupportedOperationException("Hash table is full");
+    public record TraceResult<E, S extends Enum<S>>(E value, List<S> trace) {
     }
-
 
     public ClosedHashTable(int capacity, Mode mode) {
         if (capacity <= 0) {
@@ -174,53 +48,18 @@ public class ClosedHashTable<T> {
     }
 
     public void put(T key) {
-        validateKey(key);
-
-        int index = findSlotForInsert(key);
-        if (index == -1) {
+        boolean inserted = putInternal(key, step -> {});
+        if (!inserted) {
             throw new UnsupportedOperationException("Hash table is full");
         }
-
-        if (isStoredKey(index, key)) {
-            counts[index]++;
-            return;
-        }
-
-        data[index] = key;
-        counts[index] = 1;
-        size++;
     }
 
     public T get(T key) {
-        validateKey(key);
-
-        int index = findSlotForSearch(key);
-        if (index == -1) {
-            return null;
-        }
-
-        @SuppressWarnings("unchecked")
-        T value = (T) data[index];
-        return value;
+        return getInternal(key, step -> {});
     }
 
     public boolean remove(T key) {
-        validateKey(key);
-
-        int index = findSlotForSearch(key);
-        if (index == -1) {
-            return false;
-        }
-
-        if (counts[index] > 1) {
-            counts[index]--;
-        } else {
-            data[index] = DELETED;
-            counts[index] = 0;
-            size--;
-        }
-
-        return true;
+        return removeInternal(key, step -> {});
     }
 
     public boolean contains(T key) {
@@ -228,6 +67,8 @@ public class ClosedHashTable<T> {
     }
 
     public int occurrences(T key) {
+        validateKey(key);
+
         int index = findSlotForSearch(key);
         if (index == -1) {
             return 0;
@@ -261,8 +102,120 @@ public class ClosedHashTable<T> {
         return Arrays.copyOf(counts, counts.length);
     }
 
-    private int findSlotForInsert(T key) {
+    public TraceResult<Boolean, PutStep> tracePut(T key) {
+        List<PutStep> trace = new ArrayList<>();
+        boolean result = putInternal(key, trace::add);
+        return new TraceResult<>(result, List.copyOf(trace));
+    }
+
+    public TraceResult<T, GetStep> traceGet(T key) {
+        List<GetStep> trace = new ArrayList<>();
+        T result = getInternal(key, trace::add);
+        return new TraceResult<>(result, List.copyOf(trace));
+    }
+
+    public TraceResult<Boolean, RemoveStep> traceRemove(T key) {
+        List<RemoveStep> trace = new ArrayList<>();
+        boolean result = removeInternal(key, trace::add);
+        return new TraceResult<>(result, List.copyOf(trace));
+    }
+
+    private boolean putInternal(T key, Consumer<PutStep> tracer) {
+        validateKey(key);
+
+        tracer.accept(PutStep.P1);
+
         int firstDeleted = -1;
+        int hash = primaryHash(key);
+
+        tracer.accept(PutStep.P2);
+
+        for (int step = 0; step < data.length; step++) {
+            int index = probeIndex(hash, key, step);
+            Object current = data[index];
+
+            if (current == null) {
+                tracer.accept(PutStep.P3);
+
+                int target = (firstDeleted != -1) ? firstDeleted : index;
+                data[target] = key;
+                counts[target] = 1;
+                size++;
+
+                tracer.accept(PutStep.P6);
+                return true;
+            }
+
+            if (current == DELETED) {
+                if (firstDeleted == -1) {
+                    firstDeleted = index;
+                }
+                tracer.accept(PutStep.P4);
+                tracer.accept(PutStep.P5);
+                continue;
+            }
+
+            if (current.equals(key)) {
+                tracer.accept(PutStep.P7);
+                counts[index]++;
+                tracer.accept(PutStep.P8);
+                return true;
+            }
+
+            tracer.accept(PutStep.P4);
+            tracer.accept(PutStep.P5);
+        }
+
+        if (firstDeleted != -1) {
+            data[firstDeleted] = key;
+            counts[firstDeleted] = 1;
+            size++;
+
+            tracer.accept(PutStep.P6);
+            return true;
+        }
+
+        tracer.accept(PutStep.P9);
+        return false;
+    }
+
+    private T getInternal(T key, Consumer<GetStep> tracer) {
+        validateKey(key);
+
+        tracer.accept(GetStep.G1);
+
+        int hash = primaryHash(key);
+        tracer.accept(GetStep.G2);
+
+        for (int step = 0; step < data.length; step++) {
+            int index = probeIndex(hash, key, step);
+            Object current = data[index];
+
+            if (current == null) {
+                tracer.accept(GetStep.G5);
+                return null;
+            }
+
+            if (current != DELETED && current.equals(key)) {
+                tracer.accept(GetStep.G3);
+
+                @SuppressWarnings("unchecked")
+                T value = (T) current;
+                return value;
+            }
+
+            tracer.accept(GetStep.G4);
+        }
+
+        tracer.accept(GetStep.G5);
+        return null;
+    }
+
+    private boolean removeInternal(T key, Consumer<RemoveStep> tracer) {
+        validateKey(key);
+
+        tracer.accept(RemoveStep.R1);
+
         int hash = primaryHash(key);
 
         for (int step = 0; step < data.length; step++) {
@@ -270,22 +223,31 @@ public class ClosedHashTable<T> {
             Object current = data[index];
 
             if (current == null) {
-                return firstDeleted != -1 ? firstDeleted : index;
+                tracer.accept(RemoveStep.R6);
+                return false;
             }
 
-            if (current == DELETED) {
-                if (firstDeleted == -1) {
-                    firstDeleted = index;
+            if (current != DELETED && current.equals(key)) {
+                tracer.accept(RemoveStep.R2);
+
+                if (counts[index] > 1) {
+                    counts[index]--;
+                    tracer.accept(RemoveStep.R3);
+                } else {
+                    data[index] = DELETED;
+                    counts[index] = 0;
+                    size--;
+                    tracer.accept(RemoveStep.R4);
                 }
-                continue;
+
+                return true;
             }
 
-            if (current.equals(key)) {
-                return index;
-            }
+            tracer.accept(RemoveStep.R5);
         }
 
-        return firstDeleted;
+        tracer.accept(RemoveStep.R6);
+        return false;
     }
 
     private int findSlotForSearch(T key) {
@@ -310,16 +272,11 @@ public class ClosedHashTable<T> {
     private int probeIndex(int hash, T key, int step) {
         int capacity = data.length;
 
-        switch (mode) {
-            case LINEAR_PROBING:
-                return Math.floorMod(hash + step, capacity);
-            case QUADRATIC_PROBING:
-                return Math.floorMod(hash + step * step, capacity);
-            case DOUBLE_HASHING:
-                return Math.floorMod(hash + step * secondaryHash(key), capacity);
-            default:
-                throw new IllegalStateException("unknown probing mode");
-        }
+        return switch (mode) {
+            case LINEAR_PROBING -> Math.floorMod(hash + step, capacity);
+            case QUADRATIC_PROBING -> Math.floorMod(hash + step * step, capacity);
+            case DOUBLE_HASHING -> Math.floorMod(hash + step * secondaryHash(key), capacity);
+        };
     }
 
     private int primaryHash(T key) {
@@ -327,12 +284,10 @@ public class ClosedHashTable<T> {
     }
 
     private int secondaryHash(T key) {
+        if (data.length == 1) {
+            return 1;
+        }
         return 1 + Math.floorMod(key.hashCode(), data.length - 1);
-    }
-
-    private boolean isStoredKey(int index, T key) {
-        Object current = data[index];
-        return current != null && current != DELETED && current.equals(key);
     }
 
     private void validateKey(T key) {

@@ -1,343 +1,449 @@
 import org.example.ClosedHashTable;
-import org.junit.Test;
 
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
 
-public class ClosedHashTableTest {
+import java.util.List;
 
-    @Test
-    public void putAndGetLinear() {
-        ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
+import static org.junit.jupiter.api.Assertions.*;
 
-        table.put("a");
-        table.put("b");
-        table.put("c");
+class ClosedHashTableTest {
 
-        assertEquals("a", table.get("a"));
-        assertEquals("b", table.get("b"));
-        assertEquals("c", table.get("c"));
-        assertEquals(3, table.size());
+    private static final class TestKey {
+        private final String value;
+        private final int hash;
+
+        private TestKey(String value, int hash) {
+            this.value = value;
+            this.hash = hash;
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (!(obj instanceof TestKey other)) return false;
+            return value.equals(other.value);
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
     }
 
     @Test
-    public void putAndGetQuadratic() {
+    void constructorShouldCreateEmptyTable() {
         ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.QUADRATIC_PROBING);
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        table.put("abc");
-        table.put("bca");
-        table.put("cab");
-
-        assertEquals("abc", table.get("abc"));
-        assertEquals("bca", table.get("bca"));
-        assertEquals("cab", table.get("cab"));
+        assertEquals(0, table.size());
+        assertEquals(5, table.capacity());
+        assertTrue(table.isEmpty());
     }
 
     @Test
-    public void putAndGetDoubleHashing() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.DOUBLE_HASHING);
-
-        table.put(10);
-        table.put(39);
-        table.put(68);
-
-        assertEquals(Integer.valueOf(10), table.get(10));
-        assertEquals(Integer.valueOf(39), table.get(39));
-        assertEquals(Integer.valueOf(68), table.get(68));
+    void constructorShouldThrowForNonPositiveCapacity() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new ClosedHashTable<>(0, ClosedHashTable.Mode.LINEAR_PROBING));
     }
 
     @Test
-    public void duplicateKeysIncreaseOccurrences() {
+    void constructorShouldThrowForNullMode() {
+        assertThrows(NullPointerException.class,
+                () -> new ClosedHashTable<>(5, null));
+    }
+
+    @Test
+    void putAndGetShouldWorkForSingleElement() {
         ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        table.put("a");
-        table.put("a");
-        table.put("a");
+        table.put("A");
 
-        assertEquals("a", table.get("a"));
-        assertEquals(3, table.occurrences("a"));
+        assertEquals("A", table.get("A"));
+        assertTrue(table.contains("A"));
         assertEquals(1, table.size());
+        assertEquals(1, table.occurrences("A"));
+        assertFalse(table.isEmpty());
     }
 
     @Test
-    public void removeExistingKey() {
+    void getShouldReturnNullForMissingKey() {
         ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        table.put("a");
-        table.put("b");
-        table.put("c");
+        assertNull(table.get("missing"));
+        assertFalse(table.contains("missing"));
+        assertEquals(0, table.occurrences("missing"));
+    }
 
-        assertTrue(table.remove("b"));
-        assertNull(table.get("b"));
+    @Test
+    void putShouldIncreaseOccurrencesForDuplicateKey() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+        table.put("A");
+        table.put("A");
+
+        assertEquals("A", table.get("A"));
+        assertEquals(1, table.size());
+        assertEquals(3, table.occurrences("A"));
+    }
+
+    @Test
+    void removeShouldDecreaseOccurrencesWhenKeyWasInsertedSeveralTimes() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+        table.put("A");
+
+        assertTrue(table.remove("A"));
+
+        assertEquals(1, table.size());
+        assertEquals(1, table.occurrences("A"));
+        assertEquals("A", table.get("A"));
+    }
+
+    @Test
+    void removeShouldDeleteCellWhenLastOccurrenceIsRemoved() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+
+        assertTrue(table.remove("A"));
+
+        assertEquals(0, table.size());
+        assertEquals(0, table.occurrences("A"));
+        assertNull(table.get("A"));
+        assertFalse(table.contains("A"));
+        assertTrue(table.isEmpty());
+    }
+
+    @Test
+    void removeShouldReturnFalseForMissingKey() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        assertFalse(table.remove("A"));
+        assertEquals(0, table.size());
+    }
+
+    @Test
+    void clearShouldRemoveAllElements() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+        table.put("B");
+        table.put("B");
+
+        table.clear();
+
+        assertEquals(0, table.size());
+        assertTrue(table.isEmpty());
+        assertNull(table.get("A"));
+        assertNull(table.get("B"));
+        assertEquals(0, table.occurrences("A"));
+        assertEquals(0, table.occurrences("B"));
+    }
+
+    @Test
+    void putShouldResolveCollisionWithLinearProbing() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        TestKey a = new TestKey("A", 1);
+        TestKey b = new TestKey("B", 1);
+
+        table.put(a);
+        table.put(b);
+
+        assertEquals(a, table.get(new TestKey("A", 1)));
+        assertEquals(b, table.get(new TestKey("B", 1)));
         assertEquals(2, table.size());
     }
 
     @Test
-    public void removeOneOccurrenceOfDuplicate() {
+    void putShouldReuseDeletedSlot() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        TestKey a = new TestKey("A", 1);
+        TestKey b = new TestKey("B", 1);
+        TestKey c = new TestKey("C", 1);
+
+        table.put(a);
+        table.put(b);
+        table.remove(a);
+        table.put(c);
+
+        assertNull(table.get(new TestKey("A", 1)));
+        assertEquals(b, table.get(new TestKey("B", 1)));
+        assertEquals(c, table.get(new TestKey("C", 1)));
+        assertEquals(2, table.size());
+    }
+
+    @Test
+    void putShouldThrowWhenTableIsFull() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(2, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put(new TestKey("A", 0));
+        table.put(new TestKey("B", 1));
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> table.put(new TestKey("C", 0)));
+    }
+
+    @Test
+    void methodsShouldThrowForNullKey() {
         ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        table.put("x");
-        table.put("x");
-        table.put("x");
+        assertThrows(IllegalArgumentException.class, () -> table.put(null));
+        assertThrows(IllegalArgumentException.class, () -> table.get(null));
+        assertThrows(IllegalArgumentException.class, () -> table.remove(null));
+        assertThrows(IllegalArgumentException.class, () -> table.tracePut(null));
+        assertThrows(IllegalArgumentException.class, () -> table.traceGet(null));
+        assertThrows(IllegalArgumentException.class, () -> table.traceRemove(null));
+    }
 
-        assertTrue(table.remove("x"));
-        assertEquals(2, table.occurrences("x"));
-        assertEquals("x", table.get("x"));
+    @Test
+    void tracePutShouldReturnTraceForNewElement() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.PutStep> result = table.tracePut("A");
+
+        assertTrue(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.PutStep.P1,
+                        ClosedHashTable.PutStep.P2,
+                        ClosedHashTable.PutStep.P3,
+                        ClosedHashTable.PutStep.P6
+                ),
+                result.trace()
+        );
+    }
+
+    @Test
+    void tracePutShouldReturnTraceForDuplicateElement() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.PutStep> result = table.tracePut("A");
+
+        assertTrue(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.PutStep.P1,
+                        ClosedHashTable.PutStep.P2,
+                        ClosedHashTable.PutStep.P7,
+                        ClosedHashTable.PutStep.P8
+                ),
+                result.trace()
+        );
+        assertEquals(1, table.size());
+        assertEquals(2, table.occurrences("A"));
+    }
+
+    @Test
+    void tracePutShouldReturnTraceForCollisionAndInsert() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put(new TestKey("A", 1));
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.PutStep> result =
+                table.tracePut(new TestKey("B", 1));
+
+        assertTrue(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.PutStep.P1,
+                        ClosedHashTable.PutStep.P2,
+                        ClosedHashTable.PutStep.P4,
+                        ClosedHashTable.PutStep.P5,
+                        ClosedHashTable.PutStep.P3,
+                        ClosedHashTable.PutStep.P6
+                ),
+                result.trace()
+        );
+    }
+
+    @Test
+    void tracePutShouldReturnP9WhenTableIsFull() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(2, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put(new TestKey("A", 0));
+        table.put(new TestKey("B", 1));
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.PutStep> result =
+                table.tracePut(new TestKey("C", 0));
+
+        assertFalse(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.PutStep.P1,
+                        ClosedHashTable.PutStep.P2,
+                        ClosedHashTable.PutStep.P4,
+                        ClosedHashTable.PutStep.P5,
+                        ClosedHashTable.PutStep.P4,
+                        ClosedHashTable.PutStep.P5,
+                        ClosedHashTable.PutStep.P9
+                ),
+                result.trace()
+        );
+    }
+
+    @Test
+    void traceGetShouldReturnTraceWhenElementIsFoundImmediately() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+
+        ClosedHashTable.TraceResult<String, ClosedHashTable.GetStep> result = table.traceGet("A");
+
+        assertEquals("A", result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.GetStep.G1,
+                        ClosedHashTable.GetStep.G2,
+                        ClosedHashTable.GetStep.G3
+                ),
+                result.trace()
+        );
+    }
+
+    @Test
+    void traceGetShouldReturnTraceWhenElementIsMissingAfterCollision() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put(new TestKey("A", 1));
+
+        ClosedHashTable.TraceResult<TestKey, ClosedHashTable.GetStep> result =
+                table.traceGet(new TestKey("B", 1));
+
+        assertNull(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.GetStep.G1,
+                        ClosedHashTable.GetStep.G2,
+                        ClosedHashTable.GetStep.G4,
+                        ClosedHashTable.GetStep.G5
+                ),
+                result.trace()
+        );
+    }
+
+    @Test
+    void traceRemoveShouldReturnR3WhenOccurrenceCountIsGreaterThanOne() {
+        ClosedHashTable<String> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+
+        table.put("A");
+        table.put("A");
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.RemoveStep> result =
+                table.traceRemove("A");
+
+        assertTrue(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.RemoveStep.R1,
+                        ClosedHashTable.RemoveStep.R2,
+                        ClosedHashTable.RemoveStep.R3
+                ),
+                result.trace()
+        );
+        assertEquals(1, table.occurrences("A"));
         assertEquals(1, table.size());
     }
 
     @Test
-    public void removeShouldNotBreakSearchChain() {
-        ClosedHashTable<Integer> table =
+    void traceRemoveShouldReturnR4WhenLastOccurrenceIsRemoved() {
+        ClosedHashTable<String> table =
                 new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        table.put(1);
-        table.put(6);
-        table.put(11);
+        table.put("A");
 
-        assertTrue(table.remove(6));
-        assertEquals(Integer.valueOf(11), table.get(11));
-    }
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.RemoveStep> result =
+                table.traceRemove("A");
 
-    @Test
-    public void getMissingReturnsNull() {
-        ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put("abc");
-        table.put("def");
-
-        assertNull(table.get("zzz"));
-    }
-
-    @Test
-    public void containsWorksCorrectly() {
-        ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.QUADRATIC_PROBING);
-
-        table.put("hello");
-
-        assertTrue(table.contains("hello"));
-        assertFalse(table.contains("world"));
-    }
-
-    @Test
-    public void clearEmptiesTable() {
-        ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.DOUBLE_HASHING);
-
-        table.put("a");
-        table.put("b");
-        table.clear();
-
-        assertTrue(table.isEmpty());
-        assertNull(table.get("a"));
-        assertNull(table.get("b"));
-    }
-
-    @Test
-    public void putThrowsWhenTableIsFull() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(3, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-        table.put(2);
-        table.put(3);
-
-        UnsupportedOperationException ex = assertThrows(
-                UnsupportedOperationException.class,
-                new org.junit.function.ThrowingRunnable() {
-                    @Override
-                    public void run() {
-                        table.put(4);
-                    }
-                }
+        assertTrue(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.RemoveStep.R1,
+                        ClosedHashTable.RemoveStep.R2,
+                        ClosedHashTable.RemoveStep.R4
+                ),
+                result.trace()
         );
-
-        assertTrue(ex.getMessage().contains("Hash table is full"));
+        assertNull(table.get("A"));
+        assertEquals(0, table.size());
     }
 
     @Test
-    public void nullKeyIsForbidden() {
-        ClosedHashTable<String> table =
-                new ClosedHashTable<>(29, ClosedHashTable.Mode.LINEAR_PROBING);
+    void traceRemoveShouldReturnR5AndR6WhenElementIsMissing() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                new org.junit.function.ThrowingRunnable() {
-                    @Override
-                    public void run() {
-                        table.put(null);
-                    }
-                }
+        table.put(new TestKey("A", 1));
+
+        ClosedHashTable.TraceResult<Boolean, ClosedHashTable.RemoveStep> result =
+                table.traceRemove(new TestKey("B", 1));
+
+        assertFalse(result.value());
+        assertEquals(
+                List.of(
+                        ClosedHashTable.RemoveStep.R1,
+                        ClosedHashTable.RemoveStep.R5,
+                        ClosedHashTable.RemoveStep.R6
+                ),
+                result.trace()
         );
-
-        assertTrue(ex.getMessage().contains("key must not be null"));
     }
 
     @Test
-    public void tracePutWithoutCollisions() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+    void quadraticProbingShouldStoreAndFindElements() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(7, ClosedHashTable.Mode.QUADRATIC_PROBING);
 
-        ClosedHashTable.TraceResult<Boolean> result = table.tracePut(1);
+        TestKey a = new TestKey("A", 1);
+        TestKey b = new TestKey("B", 1);
 
-        assertTrue(result.getValue());
-        assertEquals("P1 -> P2 -> P3 -> P6", result.getTrace());
+        table.put(a);
+        table.put(b);
+
+        assertEquals(a, table.get(new TestKey("A", 1)));
+        assertEquals(b, table.get(new TestKey("B", 1)));
     }
 
     @Test
-    public void tracePutThroughDeletedSlot() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
+    void doubleHashingShouldStoreAndFindElements() {
+        ClosedHashTable<TestKey> table =
+                new ClosedHashTable<>(7, ClosedHashTable.Mode.DOUBLE_HASHING);
 
-        // 1, 6, 11 коллидируют при capacity = 5
-        table.put(1);
-        table.put(6);
-        table.put(11);
+        TestKey a = new TestKey("A", 1);
+        TestKey b = new TestKey("B", 1);
 
-        // удаляем элемент из середины цепочки
-        assertTrue(table.remove(6));
+        table.put(a);
+        table.put(b);
 
-        ClosedHashTable.TraceResult<Boolean> result = table.tracePut(21);
-
-        assertTrue(result.getValue());
-        assertEquals("P1 -> P2 -> P4 -> P5 -> P4 -> P5 -> P4 -> P5 -> P3 -> P6", result.getTrace());
-    }
-
-    @Test
-    public void tracePutTableIsFull() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(3, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-        table.put(2);
-        table.put(3);
-
-        UnsupportedOperationException ex = assertThrows(
-                UnsupportedOperationException.class,
-                new org.junit.function.ThrowingRunnable() {
-                    @Override
-                    public void run() {
-                        table.tracePut(4);
-                    }
-                }
-        );
-
-        // при полной таблице нет ни null, ни DELETED
-        assertTrue(ex.getMessage().contains("Hash table is full"));
-    }
-
-    @Test
-    public void tracePutForDuplicateKey() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        ClosedHashTable.TraceResult<Boolean> first = table.tracePut(1);
-        ClosedHashTable.TraceResult<Boolean> second = table.tracePut(1);
-
-        assertEquals("P1 -> P2 -> P3 -> P6", first.getTrace());
-        assertEquals("P1 -> P2 -> P7 -> P8", second.getTrace());
-    }
-
-    @Test
-    public void traceGetSuccessfulWithoutCollisions() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-
-        ClosedHashTable.TraceResult<Integer> result = table.traceGet(1);
-
-        assertEquals(Integer.valueOf(1), result.getValue());
-        assertEquals("G1 -> G2 -> G3", result.getTrace());
-    }
-
-    @Test
-    public void traceGetMissingStopsOnNull() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-
-        ClosedHashTable.TraceResult<Integer> result = table.traceGet(2);
-
-        assertNull(result.getValue());
-        assertEquals("G1 -> G2 -> G5", result.getTrace());
-    }
-
-    @Test
-    public void traceGetThroughDeletedAndCollisions() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-        table.put(6);
-        table.put(11);
-        assertTrue(table.remove(1)); // помечаем первую ячейку как DELETED
-
-        ClosedHashTable.TraceResult<Integer> result = table.traceGet(11);
-
-        assertEquals(Integer.valueOf(11), result.getValue());
-        assertEquals("G1 -> G2 -> G4 -> G4 -> G3", result.getTrace());
-    }
-
-    @Test
-    public void traceRemoveSingleOccurrence() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-
-        ClosedHashTable.TraceResult<Boolean> result = table.traceRemove(1);
-
-        assertTrue(result.getValue());
-        assertEquals("R1 -> R2 -> R4", result.getTrace());
-    }
-
-    @Test
-    public void traceRemoveFromDuplicatesDecrementsCount() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-        table.put(1);
-        table.put(1);
-
-        ClosedHashTable.TraceResult<Boolean> result = table.traceRemove(1);
-
-        assertTrue(result.getValue());
-        assertEquals("R1 -> R2 -> R3", result.getTrace());
-    }
-
-    @Test
-    public void traceRemoveMissingOnEmptyTable() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        ClosedHashTable.TraceResult<Boolean> result = table.traceRemove(10);
-
-        assertFalse(result.getValue());
-        assertEquals("R1 -> R6", result.getTrace());
-    }
-
-    @Test
-    public void traceRemoveMissingAfterCollisions() {
-        ClosedHashTable<Integer> table =
-                new ClosedHashTable<>(5, ClosedHashTable.Mode.LINEAR_PROBING);
-
-        table.put(1);
-        table.put(6);
-        table.put(11);
-
-        ClosedHashTable.TraceResult<Boolean> result = table.traceRemove(21);
-
-        assertFalse(result.getValue());
-        assertEquals("R1 -> R5 -> R5 -> R5 -> R6", result.getTrace());
+        assertEquals(a, table.get(new TestKey("A", 1)));
+        assertEquals(b, table.get(new TestKey("B", 1)));
     }
 }
