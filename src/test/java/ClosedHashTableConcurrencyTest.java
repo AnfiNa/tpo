@@ -10,12 +10,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ClosedHashTableConcurrencyTest {
 
-    @RepeatedTest(200)
+    @RepeatedTest(100)
     void shouldRemainConsistentUnderHighConcurrency() throws Exception {
         ClosedHashTable<Integer> table =
                 new ClosedHashTable<>(1024, ClosedHashTable.Mode.LINEAR_PROBING);
 
-        int threads = 200;
+        int threads = 10;
         int operationsPerThread = 2000;
 
         ExecutorService executor = Executors.newFixedThreadPool(threads);

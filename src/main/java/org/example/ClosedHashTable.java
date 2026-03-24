@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class ClosedHashTable<T> {
 
     private static final Object DELETED = new Object();
@@ -15,6 +17,8 @@ public class ClosedHashTable<T> {
     private final Mode mode;
 
     private int size;
+
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public enum Mode {
         LINEAR_PROBING,
@@ -48,36 +52,65 @@ public class ClosedHashTable<T> {
     }
 
     public void put(T key) {
-        boolean inserted = putInternal(key, step -> {});
-        if (!inserted) {
-            throw new UnsupportedOperationException("Hash table is full");
+        lock.writeLock().lock();
+        try {
+            boolean inserted = putInternal(key, step -> {});
+            if (!inserted) {
+                throw new UnsupportedOperationException("Hash table is full");
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
     public T get(T key) {
-        return getInternal(key, step -> {});
+        lock.readLock().lock();
+        try {
+            return getInternal(key, step -> {});
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public boolean remove(T key) {
-        return removeInternal(key, step -> {});
+        lock.writeLock().lock();
+        try {
+            return removeInternal(key, step -> {});
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public boolean contains(T key) {
-        return get(key) != null;
+        lock.readLock().lock();
+        try {
+            return getInternal(key, step -> {}) != null;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public int occurrences(T key) {
-        validateKey(key);
-
-        int index = findSlotForSearch(key);
-        if (index == -1) {
-            return 0;
+        lock.readLock().lock();
+        try {
+            validateKey(key);
+            int index = findSlotForSearch(key);
+            if (index == -1) {
+                return 0;
+            }
+            return counts[index];
+        } finally {
+            lock.readLock().unlock();
         }
-        return counts[index];
     }
 
     public int size() {
-        return size;
+        lock.readLock().lock();
+        try {
+            return size;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public int capacity() {
@@ -85,39 +118,74 @@ public class ClosedHashTable<T> {
     }
 
     public boolean isEmpty() {
-        return size == 0;
+        lock.readLock().lock();
+        try {
+            return size == 0;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public void clear() {
-        Arrays.fill(data, null);
-        Arrays.fill(counts, 0);
-        size = 0;
+        lock.writeLock().lock();
+        try {
+            Arrays.fill(data, null);
+            Arrays.fill(counts, 0);
+            size = 0;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public Object[] getData() {
-        return Arrays.copyOf(data, data.length);
+        lock.readLock().lock();
+        try {
+            return Arrays.copyOf(data, data.length);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public int[] getCounts() {
-        return Arrays.copyOf(counts, counts.length);
+        lock.readLock().lock();
+        try {
+            return Arrays.copyOf(counts, counts.length);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public TraceResult<Boolean, PutStep> tracePut(T key) {
-        List<PutStep> trace = new ArrayList<>();
-        boolean result = putInternal(key, trace::add);
-        return new TraceResult<>(result, List.copyOf(trace));
+        lock.writeLock().lock();
+        try {
+            List<PutStep> trace = new ArrayList<>();
+            boolean result = putInternal(key, trace::add);
+            return new TraceResult<>(result, List.copyOf(trace));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public TraceResult<T, GetStep> traceGet(T key) {
-        List<GetStep> trace = new ArrayList<>();
-        T result = getInternal(key, trace::add);
-        return new TraceResult<>(result, List.copyOf(trace));
+        lock.readLock().lock();
+        try {
+            List<GetStep> trace = new ArrayList<>();
+            T result = getInternal(key, trace::add);
+            return new TraceResult<>(result, List.copyOf(trace));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public TraceResult<Boolean, RemoveStep> traceRemove(T key) {
-        List<RemoveStep> trace = new ArrayList<>();
-        boolean result = removeInternal(key, trace::add);
-        return new TraceResult<>(result, List.copyOf(trace));
+        lock.writeLock().lock();
+        try {
+            List<RemoveStep> trace = new ArrayList<>();
+            boolean result = removeInternal(key, trace::add);
+            return new TraceResult<>(result, List.copyOf(trace));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private boolean putInternal(T key, Consumer<PutStep> tracer) {
